@@ -193,17 +193,6 @@ int AnalizeCommand( int stArg, int edArg, int params)
 			switch (ch)
 			{
 			case '&':
-
-			/* add_begin 将&添加到命令的末尾*/
-			{
-				int length = strlen(args[stArg]);
-				args[stArg][length] = '&';
-				args[stArg][length+1] = 0;
-				return CreateSimpleNode( stArg, curArg-1, params );
-
-			};break;
-			/* add_end */
-
 			case ';':	//并列独立命令分隔符
 				if ( curveCnt == 0 )  return CreateTableNode( stArg, edArg, curArg, params );
 				break;

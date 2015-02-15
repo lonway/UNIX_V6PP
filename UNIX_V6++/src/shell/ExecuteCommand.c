@@ -124,23 +124,13 @@ void ExecuteTCOM( struct commandNode* node, struct commandNode* parent, int* pip
 		/* add_end */
 	}
 
-	/* add_begin */
-	int isBackground = 0;	//是否为后台命令
-	//去掉后台命令末尾的&
-	int length = strlen(node->args[0]);
-	if(node->args[0][length-1] == '&'){
-		node->args[0][length-1] = 0;
-		isBackground = 1;
-	}
-	/*add_end */
-
 	int child = fork();
 	int dead = -1;
 
 	if ( child != 0 ) /* parent */
 	{		
-		if ( isBackground == 0 && 	/* add */
-				(node->params & FAND) == 0 ) /* need wait */
+		printf("%d\n", node->params);
+		if ( (node->params & FAND) == 0 ) /* need wait */
 		{
 			while( wait(&state)!= child);
 			//wait(&state);
