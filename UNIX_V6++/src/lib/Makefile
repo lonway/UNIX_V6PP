@@ -25,7 +25,9 @@ LIB_OBJS =	$(TARGET)\file.o	\
 			$(TARGET)\float.o	\
 			$(TARGET)\sprintf.o	\
 			$(TARGET)\print_parse.o	\
-			$(TARGET)\time.o	
+			$(TARGET)\time.o \
+			$(TARGET)\malloc.o
+
 			
 			
 all	:	$(LIB_OBJS)
@@ -60,6 +62,9 @@ $(TARGET)\print_parse.o	:	$(SRC)\print_parse.c $(SRC)\print_parse.h
 	$(CC) $(CFLAGS) -I"$(INCLUDE)" -c $< -o $@
 	
 $(TARGET)\time.o	:	$(SRC)\time.c $(INCLUDE)\time.h
+	$(CC) $(CFLAGS) -I"$(INCLUDE)" -c $< -o $@	
+
+$(TARGET)\malloc.o	:	$(SRC)\malloc.c $(INCLUDE)\malloc.h
 	$(CC) $(CFLAGS) -I"$(INCLUDE)" -c $< -o $@	
 	
 clean:

@@ -68,10 +68,10 @@ int sleep(unsigned int seconds)
 }
 
 extern errno;  //使用errno需要include "stdlib.h"
-int brk(unsigned int newSize)
+int brk(void * newEndDataAddr)
 {
 	int res;
-	__asm__ volatile ("int $0x80":"=a"(res):"a"(17),"b"(newSize) );
+	__asm__ volatile ("int $0x80":"=a"(res):"a"(17),"b"(newEndDataAddr));
 	if ( res >= 0 )
 		return res;
 	errno = -1*res;
@@ -176,4 +176,17 @@ int trace(int lines)
 	if ( res >= 0 )
 		return res;
 	return -1;
+}
+
+unsigned int fakeedata = 0;
+int sbrk(int increment)
+{
+	if (fakeedata == 0)
+	{
+		fakeedata = brk(0);
+	}
+	unsigned int newedata = fakeedata + increment - 1;
+	brk(((newedata >> 12) + 1) << 12);
+	fakeedata = newedata + 1;
+	return fakeedata;
 }

@@ -1,154 +1,92 @@
-#include<sys.h>
-#include<malloc.h>
+#include <sys.h>
+#include <malloc.h>
+#include <stdio.h>
 
-#define PAGE_SIZE 4096
+#define PAGE_SIZE 12288
 
-// bucket descriptor,16 bytes
-struct bucket_desc
-{
-    void *page;
-    struct bucket_desc *next;
-    void *freeptr;
-    unsigned short refcnt;
-    unsigned short bucket_size;
+char *malloc_begin = NULL;
+char *malloc_end = NULL;
 
+typedef struct flist {
+   unsigned int size;
+   struct flist *nlink;
 };
 
-//struct of bucket directory
-struct bucket_dir
-{
-   int size;
-   struct bucket_desc *chain;
-};
+struct flist *malloc_head = NULL;
 
-//bucket directory
-struct bucket_dir bucket_dir[]=
+void* malloc(unsigned int size)
 {
-   {16,(struct bucket_desc *) 0},
-   {32,(struct bucket_desc *) 0},
-   {64,(struct bucket_desc *) 0},
-   {128,(struct bucket_desc *) 0},
-   {256,(struct bucket_desc *) 0},
-   {512,(struct bucket_desc *) 0},
-   {1024,(struct bucket_desc *) 0},
-   {2048,(struct bucket_desc *) 0},
-   {4096,(struct bucket_desc *) 0},
-   {0,(struct bucket_desc *) 0}
-};
+    if (malloc_begin == NULL)
+    {
+        /* code */
+        malloc_begin = sbrk(0);
+        malloc_end = sbrk(PAGE_SIZE);
+        malloc_head = malloc_begin;
+        malloc_head->size = sizeof(struct flist);
+        
+        malloc_head->nlink = NULL;
 
-//a link of free bucket descriptor blocks
-struct bucket_desc * free_bucket_desc = (struct bucket_desc *) 0;
-
-//initialize link of free bucket descriptors
-int init_bucket_desc()
-{
-   struct bucket_desc * bdesc;
-   int i;
-   unsigned int addr;
-  
-   free_bucket_desc=(struct bucket_desc *)brk();
-   bdesc=free_bucket_desc;
-   if(!bdesc)
-   return 0;
-   for(i=PAGE_SIZE/sizeof(struct bucket_desc);i>1;i--)
-   {
-        bdesc->next=bdesc+1;
-        bdesc++;   
-   }
-   bdesc->next=(struct bucket_desc *)0;
-   return 1;
+    }
+    if (size == 0)
+    {
+        return NULL;
+    }
+    size += sizeof(struct flist);
+    size = ((size + 7) >> 3) << 3;
+    struct flist* iter = malloc_head;
+    // find a place to insert
+    while(iter->nlink)
+    {
+        if ((int)(iter->nlink) - iter->size - (int)iter >= size)
+        {
+            struct flist *temp = (char *)iter + (iter->size);
+            temp->nlink = iter->nlink;
+            iter->nlink = temp;
+            temp->size = size;
+            return (char *)temp + sizeof(struct flist);
+        }
+        iter = iter->nlink;
+    }
+    // not found
+    int expand = size - (malloc_end - (char *)iter - (iter->size));
+    expand = ((expand + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
+    malloc_end = sbrk(expand);
+    iter->nlink = (char *)iter + (iter->size);
+    iter = iter->nlink;
+    iter->size = size;
+    iter->nlink = NULL;
+//    printf("%u\n", iter);
+    return (char*)iter + sizeof(struct flist);
 }
 
-//malloc 返回值为0表示出错
-void * malloc(unsigned int len)
+int free(void* addr)
 {
-    struct bucket_dir * bdir;
-    struct bucket_desc *bdesc;
-    void * retval;
-    for(bdir=bucket_dir;bdir->size;bdir++)
+    char * real_addr = addr - 8;
+    struct flist* iter = malloc_head;
+    struct flist* last = malloc_head;
+    if (addr == 0)
     {
-         if(bdir->size>=len)
-            break;  
+        return -1;
     }
-    if(!bdir->size)
+    // find a place to insert
+    while(iter)
     {
-         printf("%d bytes:malloc called with larger than 4096 bytes!\n",len);
-         return 0;
-    }
-    
-    for(bdesc=bdir->chain;bdesc;bdesc=bdesc->next)
-    {   
-        if(bdesc->freeptr)
-           break;
-    }
-
-    //If we haven't found one, than we should establish a new bucket_desctiptor
-    if(!bdesc) 
-    {    
-          void * cp;  
-          int i;
-          //If free_bucket_desc is NULL, than establish the link of free bucket
-          if(!free_bucket_desc)
-          {
-				if(!init_bucket_desc())
-                {     
-                    printf("No enough memory for bucket descriptors!\n");
-                    return 0;
+        if (iter == real_addr)
+        {
+            last->nlink = iter->nlink;
+            if (last->nlink == NULL)
+            {
+                char *pos = (char *)last + last->size;
+                if (malloc_end - pos > PAGE_SIZE * 2)
+                {
+                    malloc_end = sbrk(-((malloc_end - pos) / PAGE_SIZE * PAGE_SIZE));
                 }
-                
-          } 
-
-          
-          //take out one free bucket
-          bdesc=free_bucket_desc;
-          free_bucket_desc=bdesc->next;
-          
-          //initialize the bucket descriptor
-          bdesc->page=(void *)brk();
-          bdesc->next=bdir->chain;
-          bdesc->freeptr=bdesc->page;
-          bdesc->refcnt=0;
-          bdesc->bucket_size=bdir->size;
-          bdir->chain=bdesc;
-          cp=bdesc->page;
-          if(!bdesc->page)
-          {
-                printf("No enough memory for allocation!\n");
-                return 0;
-          }
-      
-          for(i=PAGE_SIZE/bdir->size;i>1;i--)
-          {
-                *((char**)cp)=cp+bdir->size;
-                cp=cp+bdir->size;
-          }
-                *((char**)cp)=0;
-     }
-    
-     //allocate memory block
-     retval=bdesc->freeptr;
-     bdesc->freeptr=*((void **)bdesc->freeptr);
-     bdesc->refcnt++;
-  
-     return(retval);  
+            }
+            return 0;
+        }
+        last = iter;
+        iter = iter->nlink;
+    }
+    return -1;
 }
 
-int free(void * obj )
-{
-    void * page;
-    struct bucket_dir *bdir;
-    struct bucket_desc *bdesc;
-    
-    page=(unsigned long)obj&0xfffff000;
-    for(bdir=bucket_dir;bdir->size!=0;bdir++)
-        for(bdesc=bdir->chain;bdesc!=(struct bucket_desc *)0;bdesc=bdesc->next)
-            if(bdesc->page==page)
-              goto found;
-    return 0;
-found:
-    *((void**)obj)=bdesc->freeptr;
-    bdesc->freeptr=obj;
-    bdesc->refcnt--;
-    return 1;
-          
-}

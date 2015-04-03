@@ -51,7 +51,9 @@ int kill(int pid, int signal);
 
 int sleep(unsigned int seconds);
 
-int brk(unsigned int newSize);
+int brk(void * newEndDataAddr);
+
+int sbrk(int increment);
 
 int syncFileSystem();
 

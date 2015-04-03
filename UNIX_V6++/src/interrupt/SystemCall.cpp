@@ -144,7 +144,7 @@ void SystemCall::Trap(struct pt_regs* regs, struct pt_context* context)
 	User& u = Kernel::Instance().GetUser();
 	/* reference: u.u_ar0 = &r0 @line 2701 */
 
-	/* 判断有无接收到信号，如接收到信号则进行响应 */
+	/* 新加进的代码。判断有无接收到信号，如接收到信号则进行响应 */
 	if ( u.u_procp->IsSig() )
 	{
 		u.u_procp->PSig(context);

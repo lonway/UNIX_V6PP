@@ -3,6 +3,7 @@
 
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
 
+#include "INode.h"
 
 struct ImageDosHeader 
 {												  // DOS .EXE header
@@ -98,8 +99,8 @@ struct ImageSectionHeader
 {
 	char    Name[8];
     union {
-            unsigned short   PhysicalAddress;
-            unsigned short   VirtualSize;
+            unsigned long   PhysicalAddress;
+            unsigned long   VirtualSize;
     } Misc;
     unsigned long   VirtualAddress;
     unsigned long   SizeOfRawData;
@@ -121,7 +122,11 @@ public:
 	static const unsigned int BSS_SECTION_IDX = 3;
 	static const unsigned int IDATA_SECTION_IDX = 4;
 
+    static const int ntHeader_size = 0xf8;
+    static const int section_size = 0x28;
+
 public:
+    PEParser();
 	PEParser(unsigned long peAddress);
 	unsigned long Parse();
 	/*
@@ -130,6 +135,9 @@ public:
 	 * exe各个section的信息，同时需要首先map好页表，否则会失败
 	 */
 	unsigned int Relocate();
+	unsigned int Relocate(Inode* p_inode, int sharedText);
+
+    bool HeaderLoad(Inode* p_inode);
 
 public:
 	unsigned long EntryPointAddress;
@@ -145,7 +153,9 @@ public:
 
 private:
 	unsigned long peAddress;
-	ImageNTHeader* ntHeader;
+	ImageNTHeader ntHeader;
+    //ImageSectionHeader* section_Tb;
+    int SectionCnt;
 	ImageSectionHeader* sectionHeaders;
 };
 

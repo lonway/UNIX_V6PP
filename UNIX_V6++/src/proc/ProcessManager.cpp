@@ -437,6 +437,8 @@ void ProcessManager::Fork()
 
 extern "C" void runtime();
 extern "C" void ExecShell();
+
+/* 终于敢称为 V6 的 exec实现。缺憾：不支持 ISUID 比特 */
 void ProcessManager::Exec()
 {
 	Inode* pInode;
@@ -473,7 +475,8 @@ void ProcessManager::Exec()
 		return;
 	}
 
-	/* 分配内存用于读入整个exe程序到mapAddress开始的内存区域 */
+	/* UNIX V6++原来的版本：分配内存用于读入整个exe程序到mapAddress开始的内存区域 */
+	/*
 	unsigned long mapAddress = kernelPgMgr.AllocMemory(pInode->i_size);
 	u.u_IOParam.m_Base = (unsigned char *)(mapAddress | 0xC0000000);
 	u.u_IOParam.m_Count = pInode->i_size;
@@ -481,9 +484,18 @@ void ProcessManager::Exec()
 	pInode->ReadI();
 
 	PEParser parser(mapAddress);
-	parser.Parse();
+	parser.Parse();*/
 
-	/* 获取分析PE头结构得到正文段的起始地址、长度 */
+	PEParser parser;
+	//parser.Parse();
+
+    if ( parser.HeaderLoad(pInode)==false )
+    {
+        fileMgr.m_InodeTable->IPut(pInode);
+        return;
+    }
+
+ 	/* 获取分析PE头结构得到正文段的起始地址、长度 */
 	u.u_MemoryDescriptor.m_TextStartAddress = parser.TextAddress;
 	u.u_MemoryDescriptor.m_TextSize = parser.TextSize;
 
@@ -494,7 +506,8 @@ void ProcessManager::Exec()
 	/* 堆栈段初始化长度 */
 	u.u_MemoryDescriptor.m_StackSize = parser.StackSize;
 	
-	if ( parser.DataSize + parser.DataSize  + 4096 > MemoryDescriptor::USER_SPACE_SIZE - parser.DataAddress)
+	//有空改成这样：textSize + dataSize + stackSize  + 4096 > USER_SPACE_SIZE - textVirtualAddress
+	if ( parser.DataSize + parser.StackSize  + 4096 > MemoryDescriptor::USER_SPACE_SIZE - parser.DataAddress)
 	{
 		u.u_error = User::ENOMEM;
 		return;
@@ -590,6 +603,9 @@ void ProcessManager::Exec()
 		}
 	}
 
+
+	int sharedText = 0;
+
 	/* 没有可共享的现成Text结构，进行相应初始化 */
 	if ( NULL != pText )
 	{
@@ -615,6 +631,7 @@ void ProcessManager::Exec()
 	else
 	{
 		pText = u.u_procp->p_textp;
+		sharedText = 1;
 	}
 
 	unsigned int newSize = ProcessManager::USIZE + u.u_MemoryDescriptor.m_DataSize + u.u_MemoryDescriptor.m_StackSize;
@@ -625,18 +642,17 @@ void ProcessManager::Exec()
 	u.u_MemoryDescriptor.EstablishUserPageTable(parser.TextAddress, parser.TextSize, parser.DataAddress, parser.DataSize, parser.StackSize);
 
 	/* 从exe文件中依次读入.text段、.data段、.rdata段、.bss段 */
-	parser.Relocate();
+	parser.Relocate(pInode, sharedText);
 
 	/* 将fakeStack中备份的用户栈参数复制到新进程图像的用户栈中 */
 	Utility::MemCopy(fakeStack | 0xC0000000, MemoryDescriptor::USER_SPACE_SIZE - parser.StackSize, parser.StackSize);
+
 	/* 
 	  * 将runtime()、SignalHandler()函数拷贝到进程用户态地址空间0x00000000线性地址处，runtime()
 	  * 用于ring0退出到ring3特权级之后执行的代码，SignalHandler()为进程的信号处理函数入口，负责
 	  * 调用具体信号的Handler。每一个进程0x00000000线性地址处都应该有一份独立的runtime()及SignalHandler()
 	  * 函数副本！
 	  */
-
-
 	unsigned char* runtimeSrc = (unsigned char*)runtime;
 	unsigned char* runtimeDst = 0x00000000;
 	for (unsigned int i = 0; i < (unsigned long)ExecShell - (unsigned long)runtime; i++)
@@ -646,7 +662,7 @@ void ProcessManager::Exec()
 
 
 	/* 释放用于读入exe文件和备份用户栈参数的内存：mapAddress和fakeStack */
-	kernelPgMgr.FreeMemory(pInode->i_size, mapAddress);
+	//kernelPgMgr.FreeMemory(pInode->i_size, mapAddress);
 	kernelPgMgr.FreeMemory(parser.StackSize, fakeStack);
 
 	/* 在交换区中保留一份共享段副本 */
@@ -660,7 +676,19 @@ void ProcessManager::Exec()
 	}
 	this->ExeCnt--;
 
-	/* 将exe程序的入口地址放入核心栈现场保护区中的EAX作为系统调用返回值 */
+	/* 用默认的方式处理信号  */
+	for (int i = 0; i < u.NSIG ; i++)
+	{
+		u.u_signal[i] = 0;
+	}
+
+	/* 清0所有通用寄存器  */
+	for (int i = User::EAX - 4; i < User::EAX - 4*7 ; i = i - 4)
+	{
+		u.u_ar0[i] = 0;     /* 下标写成  User::EAX + i 可读性要强一些，但是运算速度慢了。就小抠，追求速度吧 */
+	}
+
+	/* 将exe程序的入口地址放入核心栈现场保护区中的EAX作为系统调用返回值，这个是runtime要用  */
 	u.u_ar0[User::EAX] = parser.EntryPointAddress;
 	
 	/* 构造出Exec()系统调用的退出环境，使之退出到ring3时，开始执行user code */

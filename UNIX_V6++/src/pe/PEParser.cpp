@@ -1,59 +1,101 @@
 #include "PEParser.h"
 #include "Utility.h"
 #include "PageManager.h"
+#include "MemoryDescriptor.h"
+#include "User.h"
+#include "Kernel.h"
+#include "Machine.h"
 
-PEParser::PEParser(unsigned long peAddress)
+PEParser::PEParser()
 {
-	this->peAddress = peAddress + 0xC0000000;
+    this->EntryPointAddress = 0;
+    this->sectionHeaders = 0;
 }
 
-
-unsigned long PEParser::Parse()
+/* 原来V6++的PEParser */
+PEParser::PEParser(unsigned long peAddress)
 {
-	ImageDosHeader* dosHeader = (ImageDosHeader*)this->peAddress;
-	if( dosHeader->e_magic != 0x5a4d )
-	{
-		return 0xffffffff;
+	this->peAddress = peAddress + 0xC0000000;   // pe头的虚地址
+}
+
+unsigned int PEParser::Relocate(Inode* p_inode, int sharedText)
+{
+	User& u = Kernel::Instance().GetUser();
+	unsigned long srcAddress, desAddress;
+	unsigned cnt = 0;
+	unsigned int i = 0;
+
+	/* 如果可以和其它进程共享正文段，无需文件中读入正文段 */
+	PageTable* pUserPageTable = Machine::Instance().GetUserPageTableArray();
+	unsigned int textBegin = this->TextAddress >> 12 ,textLength = this->TextSize >> 12;
+	PageTableEntry* pointer = (PageTableEntry *)pUserPageTable;
+	int i0;
+
+	if(sharedText == 1)
+		i = 1;      // i是段头索引
+	else
+	{   // 修改正文段的读写标志，为内核写代码段做准备
+		i = 0;
+
+		for (i0 = textBegin; i0 < textBegin + textLength; i0++)
+			pointer[i0].m_ReadWriter = 1;
+
+		FlushPageDirectory();
 	}
-	
-	ImageNTHeader* ntHeader = 
-		(ImageNTHeader*)(this->peAddress + dosHeader->e_lfanew);
 
-	this->ntHeader = ntHeader;
+    /* 对所有页面执行清0操作，这样bss变量的初值就是0 */
+	for (; i <= this->BSS_SECTION_IDX; i++ )
+	{
+		ImageSectionHeader* sectionHeader = &(this->sectionHeaders[i]);
+		int beginVM = sectionHeader->VirtualAddress + ntHeader.OptionalHeader.ImageBase;
+		int size = ((sectionHeader->Misc.VirtualSize + 4095)>>12)<<12;
+		int j;
 
-	this->EntryPointAddress = 
-		ntHeader->OptionalHeader.AddressOfEntryPoint + ntHeader->OptionalHeader.ImageBase;
-	this->TextAddress = 
-		ntHeader->OptionalHeader.BaseOfCode + ntHeader->OptionalHeader.ImageBase;
-	this->TextSize = 
-		ntHeader->OptionalHeader.BaseOfData - ntHeader->OptionalHeader.BaseOfCode;
+		if(sharedText == 0 || i != 0)   /*如果与其它进程共享正文段，切不可清0*/
+		{
+			for (j=0; j<size; j++)
+			{
+				unsigned char* b =(unsigned char*)(j + beginVM);
+				*b = 0;
+			}
+		}
+	}
 
-	this->DataAddress =
-		ntHeader->OptionalHeader.BaseOfData + ntHeader->OptionalHeader.ImageBase;
+	/* 读正文段（optional）；读文件，得全局变量的初值  */
+ 	if(sharedText == 1)
+		i = 1;      // i是段头索引
+	else
+	// 修改正文段的读写标志，为内核写代码段做准备
+		i = 0;
 
-	this->StackSize = 
-		ntHeader->OptionalHeader.SizeOfStackCommit;
-	this->HeapSize =
-		ntHeader->OptionalHeader.SizeOfHeapCommit;
+	for ( ; i < this->BSS_SECTION_IDX; i++ )
+	{
+		ImageSectionHeader* sectionHeader = &(this->sectionHeaders[i]);
+		srcAddress = sectionHeader->PointerToRawData;
+		desAddress =
+			this->ntHeader.OptionalHeader.ImageBase + sectionHeader->VirtualAddress;
 
-	/*
-	 * @comment 这里hardcode gcc的逻辑
-	 * section 顺序为 .text->.data->.rdata->.bss
-	 *
-	 */
-	unsigned offset = (unsigned long)ntHeader + sizeof(*ntHeader);
-	this->sectionHeaders = (ImageSectionHeader*)offset;
-	
-	/*
-	 * 现在只计算Data段的大小，假定个各类型的数据段连续存放，
-	 * 因此只要知道.idata段的起始位置与大小，并对其到4k就是
-	 * Data段大小
-	 */
-	ImageSectionHeader* lastDataHeader = 
-		&(this->sectionHeaders[this->IDATA_SECTION_IDX]);
-	
-	this->DataSize = lastDataHeader->VirtualAddress - ntHeader->OptionalHeader.BaseOfData;
-	return this->EntryPointAddress;
+	    u.u_IOParam.m_Base = (unsigned char*)desAddress;
+	    u.u_IOParam.m_Offset = srcAddress;
+	    u.u_IOParam.m_Count = sectionHeader->Misc.VirtualSize;
+
+	    p_inode->ReadI();
+
+		cnt += sectionHeader->Misc.VirtualSize;
+	}
+
+	if(sharedText == 0)
+	{   //将正文段页面改回只读
+		for (i0 = 0; i0 < textLength; i0++)
+			pointer[i0].m_ReadWriter = 0;
+
+		FlushPageDirectory();
+	}
+
+	// KernelPageManager& kpm = Kernel::Instance().GetKernelPageManager();
+	// kpm.FreeMemory(section_size * ntHeader.FileHeader.NumberOfSections, (unsigned long)this->sectionHeaders - 0xC0000000 );
+	delete this->sectionHeaders;
+	return 	cnt;
 }
 
 unsigned int PEParser::Relocate()
@@ -66,10 +108,81 @@ unsigned int PEParser::Relocate()
 		ImageSectionHeader* sectionHeader = &(this->sectionHeaders[i]);
 		srcAddress = this->peAddress + sectionHeader->PointerToRawData;
 		desAddress = 
-			this->ntHeader->OptionalHeader.ImageBase + sectionHeader->VirtualAddress;
+			this->ntHeader.OptionalHeader.ImageBase + sectionHeader->VirtualAddress;
 		Utility::MemCopy(srcAddress, desAddress, sectionHeader->Misc.VirtualSize);
 		cnt += sectionHeader->Misc.VirtualSize;
 	}
 
 	return 	cnt;
+}
+
+bool PEParser::HeaderLoad(Inode* p_inode)
+{
+    ImageDosHeader dos_header;
+    User& u = Kernel::Instance().GetUser();
+    // KernelPageManager& kpm = Kernel::Instance().GetKernelPageManager();
+
+    /*读取dos header*/
+    u.u_IOParam.m_Base = (unsigned char*)&dos_header;
+    u.u_IOParam.m_Offset = 0;
+    u.u_IOParam.m_Count = 0x40;
+    p_inode->ReadI();       //文件IO不会因为多次ReadI而增加。有缓存的！
+
+    /*读取nt_Header*/
+    //ntHeader = (ImageNTHeader*)(kpm.AllocMemory(ntHeader_size)+0xC0000000);
+    u.u_IOParam.m_Base = (unsigned char*)(&this->ntHeader);
+    u.u_IOParam.m_Offset = dos_header.e_lfanew;
+    u.u_IOParam.m_Count = ntHeader_size;
+    p_inode->ReadI();
+
+    if ( ntHeader.Signature!=0x00004550 )
+	{
+		//kpm.FreeMemory(ntHeader_size, (unsigned long)ntHeader - 0xC0000000 );
+        return false;
+	}
+
+
+    /*原来这里的size全都没有4K对齐，现已修正*/
+    /*
+    TextAddress = ntHeader->OptionalHeader.BaseOfCode + ntHeader->OptionalHeader.ImageBase;
+    TextSize = ntHeader->OptionalHeader.SizeOfCode;
+    TextSize = ((ntHeader->OptionalHeader.SizeOfCode + 4095) >> 12) << 12;
+
+    DataAddress = ntHeader->OptionalHeader.BaseOfData + ntHeader->OptionalHeader.ImageBase;
+    DataSize = ((ntHeader->OptionalHeader.SizeOfInitializedData +
+                    ntHeader->OptionalHeader.SizeOfUninitializedData + 4095) >> 12) << 12;
+    */
+
+    StackSize = ntHeader.OptionalHeader.SizeOfStackCommit;
+    HeapSize = ntHeader.OptionalHeader.SizeOfHeapCommit;
+
+    SectionCnt = ntHeader.FileHeader.NumberOfSections;
+    EntryPointAddress = ntHeader.OptionalHeader.AddressOfEntryPoint +
+                    ntHeader.OptionalHeader.ImageBase;
+
+
+    /* 读取Section tables至页表区。这是无奈之举，核心态用不了malloc！！ 记得修改malloc的时候，
+     * 为核心态也加上这个功能。用上系统提供的  new 和 free 函数。*/
+    // sectionHeaders = (ImageSectionHeader*)(kpm.AllocMemory(SectionCnt * section_size) + 0xC0000000 );
+   	sectionHeaders = new ImageSectionHeader;
+    u.u_IOParam.m_Base = (unsigned char*)sectionHeaders;
+    u.u_IOParam.m_Offset = dos_header.e_lfanew + ntHeader_size;
+    u.u_IOParam.m_Count = section_size * ntHeader.FileHeader.NumberOfSections;
+    p_inode->ReadI();
+
+    /*
+    	 * @comment 这里hardcode gcc的逻辑
+    	 * section 顺序为 .text->.data->.rdata->.bss
+    	 *
+    */
+	this->TextAddress =
+		ntHeader.OptionalHeader.BaseOfCode + ntHeader.OptionalHeader.ImageBase;
+	this->TextSize =
+		ntHeader.OptionalHeader.BaseOfData - ntHeader.OptionalHeader.BaseOfCode;
+
+	this->DataAddress =
+		ntHeader.OptionalHeader.BaseOfData + ntHeader.OptionalHeader.ImageBase;
+	this->DataSize = this->sectionHeaders[this->IDATA_SECTION_IDX].VirtualAddress - ntHeader.OptionalHeader.BaseOfData;
+
+    return true;
 }

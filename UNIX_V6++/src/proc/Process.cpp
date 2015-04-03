@@ -353,9 +353,15 @@ void Process::SStack()
 void Process::SBreak()
 {
 	User& u = Kernel::Instance().GetUser();
-	unsigned int newSize = u.u_arg[0];
+	unsigned int newEnd = u.u_arg[0];
 	MemoryDescriptor& md = u.u_MemoryDescriptor;
+	unsigned int newSize = newEnd - md.m_DataStartAddress;
 
+	if (newEnd == 0)
+	{
+		u.u_ar0[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
+		return;
+	}
 
 	if ( false == u.u_MemoryDescriptor.EstablishUserPageTable(md.m_TextStartAddress, 
 						md.m_TextSize, md.m_DataStartAddress, newSize, md.m_StackSize) )
@@ -393,6 +399,7 @@ void Process::SBreak()
 			Utility::CopySeg(dst - change, dst);
 		}
 	}
+	u.u_ar0[User::EAX] = md.m_DataStartAddress + md.m_DataSize;
 }
 
 void Process::PSignal( int signal )

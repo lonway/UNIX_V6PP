@@ -13,7 +13,7 @@
 
 #define IsSpace( ch ) (ch) == ' '
 
-//将命令分解到args数组, keyToken也保存到args
+
 int SpiltCommand( char* input )
 {
 	char* pline = line;
@@ -50,19 +50,16 @@ int SpiltCommand( char* input )
 	}
 	return nargs;
 }
-
-//获取下一个词条的首地址
 char* NextKeyToken(char* input)
 {
 	char* p = input;
 	while ( *p )
 	{
-		//遇到keyToken和空格则当前词条结束
 		if ( IsKeyToken(*p) )
 		{
 			if ( *(p-1) == '\\' ) 
 			{
-				p += 2;	//??????
+				p += 2;
 				continue;
 			}
 			else break;
@@ -73,7 +70,6 @@ char* NextKeyToken(char* input)
 	return p;
 }
 
-/* 去掉左边多余的空格 */
 char* TrimLeft( char* tp )
 {
 	char* p = tp;

@@ -4,6 +4,8 @@
 #define STDIN	0
 #define STDOUT 	1
 
+#include <stddef.h>
+
 int sprintf(char* buffer, char* fmt,...);
 void printf(char* fmt,...);
 void gets(char *s);

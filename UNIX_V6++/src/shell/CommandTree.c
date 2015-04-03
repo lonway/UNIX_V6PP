@@ -2,6 +2,9 @@
 #include "PreExecute.h"
 #include "globe.h"
 #include "string.h"
+#include "malloc.h"
+#include "stdlib.h"
+#include "Jobs.h"
 
 struct commandNode commandNodes[50];
 int curNode;
@@ -94,6 +97,7 @@ int CreateSimpleNode( int stArg, int edArg, int params )
 		stArg++;
 	}
 	pnode->args[ argCnt ] = 0;
+//	printf("commandName: %s\n", pnode->commandName);	///
 	return nodeNumber;
 }
 int CreateCurveNode( int stArg, int edArg, int params )
@@ -101,6 +105,7 @@ int CreateCurveNode( int stArg, int edArg, int params )
 	int nodeNumber = GetNextFreeCommandNode();
 	struct commandNode* pnode = &commandNodes[nodeNumber];
 	int lastArg = edArg;
+
 	pnode->commandType = TPAR;
 	pnode->fin = 0;
 	pnode->fout = 0;
@@ -140,7 +145,18 @@ int CreateCurveNode( int stArg, int edArg, int params )
 			firstArg++;
 		}		
 	}
-	pnode->left = AnalizeCommand(stArg + 1, edArg - 1, FPAR );
+
+	/* add_begin 记录下括弧内的完整命令，以便于全部丢到子shell进行处理*/
+	pnode->commandName = (char*)malloc(100);
+	int i;
+	for(i=stArg+1; i<=edArg-1; ++i){
+		pnode->commandName = strcat(pnode->commandName, args[i]);		//依次记录下从stArg到enArg里面的参数
+		pnode->commandName = strcat(pnode->commandName, " ");
+	}
+//	printf("pnode->commandName: %s\n", pnode->commandName);
+	/* add_end */
+
+//	pnode->left = AnalizeCommand(stArg + 1, edArg - 1, FPAR );
 	return nodeNumber;
 }
 
@@ -149,12 +165,12 @@ int CreatePipeNode( int stArg, int edArg, int midArg, int params )
 	int nodeNumber = GetNextFreeCommandNode();
 	struct commandNode* pnode = &commandNodes[nodeNumber];
 	pnode->commandType = TFIL;
+//	printf("CreatePipeNode: \n");	///
 	pnode->left = AnalizeCommand( stArg, midArg - 1, 0 );
 	pnode->right = AnalizeCommand( midArg + 1, edArg, params );
 	return nodeNumber;
 }
 
-//遇到& ；创建并列的左右子命令节点
 int CreateTableNode( int stArg, int edArg, int midArg, int params)
 {
 	int nodeNumber = GetNextFreeCommandNode();
@@ -169,18 +185,16 @@ int CreateTableNode( int stArg, int edArg, int midArg, int params)
 	return nodeNumber;
 }
 
-/* 将args数组中的词条放到命令书中 */
 /* 返回-1表示失败或者不能建立 */
 /* 所以在执行命令树时需要检查节点是否为-1 */
 int AnalizeCommand( int stArg, int edArg, int params)
 {
-	int curArg;		//当前参数号
-	int curveCnt = 0;		//表示当前尚未匹配的左括号的数量
+	int curArg;
+	int curveCnt = 0;
 	int leftCurve = edArg + 1;
 	int rightCurve = edArg + 1;
 	int firstPipe = edArg + 1;
 	if ( stArg > edArg ) return -1; /* error */
-	//去除命令行首的分隔符
 	while( stArg <= edArg && args[stArg][1] == 0 && ( args[stArg][0] == '&' || args[stArg][0] == ';' || args[stArg][0] == '|' ) ) stArg++; /* remove them */
 	curArg = stArg;
 	
@@ -193,7 +207,7 @@ int AnalizeCommand( int stArg, int edArg, int params)
 			switch (ch)
 			{
 			case '&':
-			case ';':	//并列独立命令分隔符
+			case ';':
 				if ( curveCnt == 0 )  return CreateTableNode( stArg, edArg, curArg, params );
 				break;
 			case '|':

@@ -4,22 +4,11 @@
 #include "globe.h"
 #include "sys.h"
 #include "stdio.h"
-#include "malloc.h"
-#include "stdlib.h"
 #include "string.h"
-#include "Jobs.h"
 #define stdin 0
 #define stdout 1
-#define NULL 0
 
 char curPath[50];
-
-/* add_begin */
-
-#define IsBuiltin( cmd ) \
-		( strcmp(cmd, "cd") || \
-		  strcmp(cmd, "jobs")  )
-/* add_end */
 
 void ExecuteTLST( struct commandNode* node, struct commandNode* parent, int* pipes)
 {
@@ -87,81 +76,44 @@ void ExecuteTPAR( struct commandNode* node, struct commandNode* parent, int* pip
 
 void ExecuteTCOM( struct commandNode* node, struct commandNode* parent, int* pipes)
 {
-//	printf("jobsCount: %d\n", jobsCount);
 	int state;
-	if(IsBuiltin(node->commandName)){	/* add ÅÐ¶ÏÊÇ·ñÄÚÖÃÃüÁî */
-		if ( strcmp(node->commandName, "cd" ) == 0 )
+	if ( strcmp(node->commandName, "cd" ) == 0 )
+	{
+		if ( argsCnt == 1 )
 		{
-			if ( argsCnt == 1 )
-			{
-				printf("%s\n", curPath);
-			}
-			else if ( argsCnt == 2 )
-			{
-				if ( chdir((node->args[1])) == -1 )
-				{
-					printf("Invalid path!\n");
-				}
-				getPath( curPath );
-			}
-			else
-			{
-				printf("Two many arguments for cd command!\n");
-			}
-			return;
+			printf("%s\n", curPath);
 		}
-		/* add_begin */
-		else if( strcmp(node->commandName, "jobs" ) == 0 ){
-			int count = 0;
-			int curJob = jobList[0].nextNode;
-			while( curJob != null){
-				printf("[%d]\t%d\t%s\n", count, jobList[curJob].job.p_pid, jobList[curJob].job.wd);
-				curJob = jobList[curJob].nextNode;
-				count++;
+		else if ( argsCnt == 2 )
+		{			
+        	if ( chdir((node->args[1])) == -1 )
+			{            
+				printf("Invalid path!\n");
 			}
-			return;
+			getPath( curPath );
 		}
-		/* add_end */
+		else
+		{
+			printf("Two many arguments for cd command!\n");
+		}
+		return;
 	}
 
 	int child = fork();
 	int dead = -1;
-
 	if ( child != 0 ) /* parent */
 	{		
-		printf("%d\n", node->params);
 		if ( (node->params & FAND) == 0 ) /* need wait */
-		{
+		{			
 			while( wait(&state)!= child);
 			//wait(&state);
 		}
-		/* add_begin */
-		else{
-			jobsCount++;
-
-			int job;
-			int i;
-			for(i=1; i<MAXJOB; ++i){
-				if(jobList[i].nextNode == empty){
-					job = i;
-					break;
-				}
-			}
-			jobList[job].job.p_pid = child;
-			strcpy(jobList[job].job.wd, node->args[0]);
-
-			jobList[job].nextNode = jobList[0].nextNode;
-			jobList[0].nextNode = job;
-		}
-		/* add_end */
 	}
 	else
 	{
 		/* test first */
 		char pathname[100];
 		//printf("commandName:%s\n", node->commandName);
-		OutputRedirect( node, pipes );
-
+		
 		if (-1 != execv( node->args[0], node->args) )
 		{
 			exit(0);

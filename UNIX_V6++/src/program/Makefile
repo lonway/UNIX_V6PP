@@ -39,7 +39,8 @@ SHELL_OBJS =$(TARGET)\cat.exe	\
 			$(TARGET)\newsig.exe \
 			$(TARGET)\sigTest.exe \
 			$(TARGET)\stack.exe	\
-			$(TARGET)\helloworld.exe	
+			$(TARGET)\malloc.exe	\
+			$(TARGET)\helloworld.exe
 			
 #$(TARGET)\performance.exe
 			
@@ -114,10 +115,14 @@ $(TARGET)\stack.exe :		stack.c
 	$(CC) $(CFLAGS) -I"$(INCLUDE)" -I"$(LIB_INCLUDE)"  $< -e _main1 $(V6++LIB) -o $@
 	copy $(TARGET)\stack.exe $(MAKEIMAGEPATH)\$(BIN)\stack.exe
 	
+$(TARGET)\malloc.exe :		malloc.c
+	$(CC) $(CFLAGS) -I"$(INCLUDE)" -I"$(LIB_INCLUDE)"  $< -e _main1 $(V6++LIB) -o $@
+	copy $(TARGET)\malloc.exe $(MAKEIMAGEPATH)\$(BIN)\malloc.exe
+	
 $(TARGET)\helloworld.exe :		helloworld.c
 	$(CC) $(CFLAGS) -I"$(INCLUDE)" -I"$(LIB_INCLUDE)"  $< -e _main1 $(V6++LIB) -o $@
 	copy $(TARGET)\helloworld.exe $(MAKEIMAGEPATH)\$(BIN)\helloworld.exe
-	
+
 clean:
 	del $(TARGET)\*.o
 	del $(TARGET)\*.exe
