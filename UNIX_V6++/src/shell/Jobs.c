@@ -17,13 +17,23 @@ Process* GenerateProcess(struct commandNode* node){
 		process->command_name = (char*)malloc(100);
 		strcpy(process->command_name, node->commandName);
 	}
+	int i=0;
+	for(; i<10; ++i){
+		if(node->args[i] != 0){
+			process->args[i] = (char*)malloc(100);
+			strcpy(process->args[i], node->args[i]);
+		}
+		else break;
+	}
 	if(node->fin != 0){
 		process->fin = (char*)malloc(100);
 		strcpy(process->fin, node->fin);
+//		printf("GenerateProcess,fin: %s\n", process->fin);	///
 	}
 	if(node->fout != 0){
 		process->fin = (char*)malloc(100);
 		strcpy(process->fout, node->fout);
+//		printf("GenerateProcess,fout: %s\n", process->fout);	///
 	}
 	if(node->commandType == TPAR){
 		process->kind =  1;

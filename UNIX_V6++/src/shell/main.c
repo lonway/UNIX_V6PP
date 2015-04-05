@@ -45,23 +45,24 @@ int main1()
 		if(root >= 0){
 			ParseCommandTree(&commandNodes[root]);
 
-			Job* job = firstJob->next;
-
-			int i = 0;
-			while(job != 0){
-				printf("[%d]\t", job->p_gid);
-				Process* process = job->first_process;
-				while(process != 0){
-					printf("%s\t", process->command_name);
-					process = process->next;
-				}
-				printf("\n");
-				job = job->next;
-			}
+//			Job* job = firstJob->next;
+//
+//			int i = 0;
+//			while(job != 0){
+//				printf("[%d]\t", job->p_gid);
+//				Process* process = job->first_process;
+//				while(process != 0){
+//					printf("%s\t", process->command_name);
+//					process = process->next;
+//				}
+//				printf("\n");
+//				job = job->next;
+//			}
 
 //			printf("Luanch\n");	///
 
-			LuanchJob(firstJob->next);
+			LuanchJob(curJob);
+			printf("again\n");///
 		}
 		/* add_end */
 

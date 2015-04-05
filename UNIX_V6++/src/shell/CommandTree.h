@@ -22,10 +22,10 @@ struct commandNode
 	int right;
 
 	/* command infos */
-	char* commandName;
+	char* commandName;		//包括路径在内的完整命令
 	char* fin;
 	char* fout;
-	char* args[10];
+	char* args[10];		//命令参数
 };
 
 extern struct commandNode commandNodes[50];

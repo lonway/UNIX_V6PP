@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <malloc.h>
 
 int main1()
 {
@@ -10,6 +11,11 @@ int main1()
 	}
 	*/
 	
-	printf("hello!!!\n");
+	//printf("hello!!!\n");
+	
+	char str[100];
+	gets(str);
+	printf("%s\n", str);
+	
     return 0;
 }
