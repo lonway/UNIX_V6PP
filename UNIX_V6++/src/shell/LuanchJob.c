@@ -49,47 +49,46 @@ void LuanchProcess(Process* p, int infile, int outfile){
 	}
 
 //	printf("child \n");	///
-	if(infile > 0){	//存在上一级process或者是第一个process具有输入重定向
-		if(p->fin != 0){	//process本身也有输入文件，那么屏蔽前面管道的输出
-			int myInfile = open(p->fin, 0);
-			if(myInfile < 0){
-				char infilePathName[100];
-				infilePathName[0] = 0;
-				strcat(infilePathName, "/bin/");
-				strcat(infilePathName, p->fin);
-//				printf("fin: %s\n", infilePathName); ///
-				myInfile = open(infilePathName, 0111);
-			}
+	if(p->fin != 0){	//process本身有输入文件，那么屏蔽前面管道的输出
+		int myInfile = open(p->fin, 0);
+		if(myInfile < 0){	//从bin路径查找
+			char infilePathName[100];
+			infilePathName[0] = 0;
+			strcat(infilePathName, "/bin/");
+			strcat(infilePathName, p->fin);
+			myInfile = open(infilePathName, 0111);
+		}
 //			printf("stdin: %d\n", stdin);	///
 //			printf("myInfile: %d\n", myInfile); ///
-			close(0);
-			dup(myInfile);
-			close(myInfile);
-//			printf("stdin: %d\n", stdin);	///
-//			char str[100];	///
-//			gets(str);	///
-//			read(myInfile, str, 8);
-//			printf("str: %s\n", str);	///
-		}
-		else{
-			close(stdin);
-			dup(infile);
-			close(infile);
-		}
+		close(0);
+		dup(myInfile);
+		close(myInfile);
+	}
+	else if(infile > 0){	//存在上一级process
+		printf("pipe to stdin\n");	///
+		close(stdin);
+		dup(infile);
+		close(infile);
 	}
 
+//	printf("p->fout: %d\n", p->fout);	///
 	if(p->fout != 0){	//process本身存在输出文件
+//		printf("enter!\n");	///
 		int myOutfile = creat(p->fout, 0x1ff);
+		printf("myOutfile: %d\n", myOutfile);	///
 		close(stdout);
 		dup(myOutfile);
 		close(myOutfile);
 
 		//将管道的输入定向到本process的输出文件
-		close(myOutfile);
-		dup(outfile);
-		close(outfile);
+		if(outfile > 0){
+			close(myOutfile);
+			dup(outfile);
+			close(outfile);
+		}
 	}
-	else if(outfile > 0){	//直接将stdout输出到管道的输入
+	if(outfile > 0){	//直接将stdout输出到管道的输入
+		printf("stdout to pipe\n"); ///
 		close(stdout);
 		dup(outfile);
 		close(outfile);
@@ -101,13 +100,18 @@ void LuanchProcess(Process* p, int infile, int outfile){
 	strcat(pathName, "/bin/");
 	strcat(pathName, p->command_name);
 //	printf("p->command_name: %s\n", p->command_name);	///
-	printf("pathName: %s\n", pathName);	///
+//	printf("pathName: %s\n", pathName);	///
 	printf("Begin to execute \n");	///
 	if(-1 == execv(pathName, p->args)){
 		printf("\'%s\' is not an exist command or may not in this folder!\n", p->command_name);
 	}
-	exit(0);
 
+	// TODO 无法执行到这里
+	printf("close\n"); 	///
+	close(stdin);
+	close(stdout);
+
+	exit(0);
 }
 
 void LuanchJob(Job* job){
@@ -117,13 +121,8 @@ void LuanchJob(Job* job){
 	Process* p = job->first_process;
 	int pid;
 	int mypipe[2], infile = -1, outfile = -1;
-//	printf("p->fin: %d", p->fin); ///
-	if(p->fin != 0){
-		infile = 1;	//第一个进程有输入重定向
-	}
 
 	for(p=job->first_process; p!=0; p=p->next){
-//		printf("first_process \n");	///
 		//如果包含管道线，则创建前后进程之间的管道
 		if(p->next != 0){
 			if(pipe(mypipe) < 0){
@@ -135,34 +134,31 @@ void LuanchJob(Job* job){
 
 		pid = fork();
 		if(pid == 0){
-//			printf("infile: %d \noutfile: %d\n", infile, outfile);
+			printf("infile: %d \toutfile: %d\t", infile, outfile);
 //			printf("enter LuanchProcess\n");	///
 			LuanchProcess(p, infile, outfile);
+//			char str[100] = "hello!";
+//			write(mypipe[0], str, sizeof(str));
 		}
 		else{
-			printf("pid: %d\n", pid);	///
+			printf("pid: %d\t", pid);	///
 			while(wait(&state) != pid);
-			printf("End\n");
+			///
+//			if(outfile > 0){
+//				char str1[100];
+//				read(mypipe[1], str1, 6);
+//				printf("pipe: %s\n", str1);
+//			}
+			///
+//			printf("End\n");
 		}
-
-		printf("1\n");	///
 
 		//清理管道
-		if(infile != stdin){
-			close(infile);
-		}
-
-		printf("2\n");	///
-
-		if(outfile != stdout){
-			close(outfile);
-		}
-
-		printf("3\n");	///
+//		printf("1\n");	///
 
 		infile = mypipe[1];
+		outfile = -1;
 
-		printf("4\n");	///
+//		printf("4\n");	///
 	}
-
 }

@@ -62,7 +62,6 @@ int main1()
 //			printf("Luanch\n");	///
 
 			LuanchJob(curJob);
-			printf("again\n");///
 		}
 		/* add_end */
 

@@ -31,7 +31,7 @@ Process* GenerateProcess(struct commandNode* node){
 //		printf("GenerateProcess,fin: %s\n", process->fin);	///
 	}
 	if(node->fout != 0){
-		process->fin = (char*)malloc(100);
+		process->fout = (char*)malloc(100);
 		strcpy(process->fout, node->fout);
 //		printf("GenerateProcess,fout: %s\n", process->fout);	///
 	}
