@@ -50,7 +50,7 @@ void LuanchProcess(Process* p, int infile, int outfile){
 
 //	printf("child \n");	///
 	if(p->fin != 0){	//process本身有输入文件，那么屏蔽前面管道的输出
-		int myInfile = open(p->fin, 0);
+		int myInfile = open(p->fin, 0111);
 		if(myInfile < 0){	//从bin路径查找
 			char infilePathName[100];
 			infilePathName[0] = 0;
@@ -60,7 +60,7 @@ void LuanchProcess(Process* p, int infile, int outfile){
 		}
 //			printf("stdin: %d\n", stdin);	///
 //			printf("myInfile: %d\n", myInfile); ///
-		close(0);
+		close(stdin);
 		dup(myInfile);
 		close(myInfile);
 	}
@@ -75,19 +75,19 @@ void LuanchProcess(Process* p, int infile, int outfile){
 	if(p->fout != 0){	//process本身存在输出文件
 //		printf("enter!\n");	///
 		int myOutfile = creat(p->fout, 0x1ff);
-		printf("myOutfile: %d\n", myOutfile);	///
+//		printf("myOutfile: %d\n", myOutfile);	///
 		close(stdout);
 		dup(myOutfile);
 		close(myOutfile);
 
-		//将管道的输入定向到本process的输出文件
+		//将管道的输入（写端）定向到本process的输出文件
 		if(outfile > 0){
 			close(myOutfile);
 			dup(outfile);
 			close(outfile);
 		}
 	}
-	if(outfile > 0){	//直接将stdout输出到管道的输入
+	else if(outfile > 0){	//直接将stdout输出到管道的输入
 		printf("stdout to pipe\n"); ///
 		close(stdout);
 		dup(outfile);
@@ -101,12 +101,12 @@ void LuanchProcess(Process* p, int infile, int outfile){
 	strcat(pathName, p->command_name);
 //	printf("p->command_name: %s\n", p->command_name);	///
 //	printf("pathName: %s\n", pathName);	///
-	printf("Begin to execute \n");	///
+//	printf("Begin to execute \n");	///
 	if(-1 == execv(pathName, p->args)){
 		printf("\'%s\' is not an exist command or may not in this folder!\n", p->command_name);
 	}
 
-	// TODO 无法执行到这里
+	// TODO 如果execv返回无错则无法执行到这里
 	printf("close\n"); 	///
 	close(stdin);
 	close(stdout);
@@ -129,34 +129,65 @@ void LuanchJob(Job* job){
 				printf("pipe error\n");
 				exit(1);
 			}
-			outfile = mypipe[0];
+			outfile = mypipe[1];
 		}
 
 		pid = fork();
+//		if(pid == 0){
+////			printf("infile: %d \toutfile: %d\t", infile, outfile);	///
+////			LuanchProcess(p, infile, outfile);
+//			printf("child_pid: %d\n", getpid());
+//			char str[] = "hello!";
+//			close(mypipe[0]);
+//			write(mypipe[1], str, strlen(str)+1);
+//			close(mypipe[1]);
+//			exit(0);
+//		}
+//		else{
+////			printf("pid: %d\t", pid);	///
+//			while(wait(&state) != pid);
+//			///
+//			printf("parent_pid: %d\n", getpid());
+//			char str1[100];
+//			close(mypipe[1]);
+//			read(mypipe[0], str1, 100);
+//			close(mypipe[0]);
+//			printf("pipe: %s\n", str1);
+//			///
+////			printf("End\n");	///
+//		}
+
 		if(pid == 0){
-			printf("infile: %d \toutfile: %d\t", infile, outfile);
-//			printf("enter LuanchProcess\n");	///
-			LuanchProcess(p, infile, outfile);
-//			char str[100] = "hello!";
-//			write(mypipe[0], str, sizeof(str));
+//			printf("infile: %d \toutfile: %d\t", infile, outfile);	///
+//			LuanchProcess(p, infile, outfile);
+			///
+			printf("child_pid: %d\n", getpid());
+			close(mypipe[1]);
+			char str1[100];
+			read(mypipe[0], str1, 100);
+			close(mypipe[0]);
+			printf("pipe: %s\n", str1);
+			///
+			exit(0);
 		}
 		else{
 			printf("pid: %d\t", pid);	///
+			///
+			printf("parent_pid: %d\n", getpid());
+			close(mypipe[0]);
+			char str[] = "hello!";
+			write(mypipe[1], str, strlen(str)+1);
 			while(wait(&state) != pid);
+			close(mypipe[1]);
+//			printf("pipe: %s\n", str);
 			///
-//			if(outfile > 0){
-//				char str1[100];
-//				read(mypipe[1], str1, 6);
-//				printf("pipe: %s\n", str1);
-//			}
-			///
-//			printf("End\n");
+			printf("End\n");	///
 		}
 
 		//清理管道
 //		printf("1\n");	///
 
-		infile = mypipe[1];
+		infile = mypipe[0];
 		outfile = -1;
 
 //		printf("4\n");	///
